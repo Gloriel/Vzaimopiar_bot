@@ -426,6 +426,12 @@ async def show_subscription_required(update: Update, context: ContextTypes.DEFAU
 
 async def show_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        # Проверяем подписку перед показом основного меню
+        user_id = update.effective_user.id
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         buttons = []
         for row in texts.WELCOME_BUTTONS:
             if not isinstance(row, list):
@@ -463,6 +469,12 @@ async def show_categories(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         query = update.callback_query
         await query.answer()
 
+        # Проверяем подписку
+        user_id = update.effective_user.id
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         keyboard = []
         for key, value in CATEGORIES.items():
             keyboard.append([InlineKeyboardButton(value, callback_data=f"category_{key}")])
@@ -482,6 +494,12 @@ async def handle_category_selection(update: Update, context: ContextTypes.DEFAUL
         query = update.callback_query
         await query.answer()
         user_id = update.effective_user.id
+        
+        # Проверяем подписку
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         category_key = query.data.replace('category_', '')
 
         if category_key not in CATEGORIES:
@@ -504,6 +522,12 @@ async def handle_title_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         user_id = update.effective_user.id
+        
+        # Проверяем подписку
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         title = update.message.text.strip()
 
         if len(title) > 50:
@@ -539,6 +563,12 @@ async def handle_url_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         user_id = update.effective_user.id
+        
+        # Проверяем подписку
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         url = update.message.text.strip()
         user_data = storage.get_user_state(user_id)['data']
 
@@ -565,6 +595,12 @@ async def handle_url_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def show_other_posts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
+        # Проверяем подписку
+        user_id = update.effective_user.id
+        if not await check_subscription(user_id, context):
+            await show_subscription_required(update, context)
+            return
+
         posts_by_cat = storage.get_recent_posts()
         if not posts_by_cat:
             text = texts.NO_OTHER_POSTS
@@ -670,9 +706,36 @@ async def handle_check_subscription(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     user_id = update.effective_user.id
+    
     if await check_subscription(user_id, context):
-        await show_welcome(update, context)
+        # Пользователь подписан - показываем основное меню
+        try:
+            await query.edit_message_text(
+                text="✅ Отлично! Теперь вы можете пользоваться ботом.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_welcome(update, context)
+        except BadRequest:
+            # Если не удалось редактировать сообщение, отправляем новое
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="✅ Отлично! Теперь вы можете пользоваться ботом.",
+                parse_mode=ParseMode.HTML
+            )
+            await show_welcome(update, context)
     else:
+        # Пользователь все еще не подписан
+        try:
+            await query.edit_message_text(
+                text="❌ Вы еще не подписались на канал. Пожалуйста, подпишитесь и нажмите проверку снова.",
+                parse_mode=ParseMode.HTML
+            )
+        except BadRequest:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ Вы еще не подписались на канал.",
+                parse_mode=ParseMode.HTML
+            )
         await show_subscription_required(update, context)
 
 async def handle_view_posts_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
